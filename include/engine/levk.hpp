@@ -1,10 +1,12 @@
 #pragma once
 #include <initializer_list>
 #include <vector>
+#include <core/time.hpp>
 #include <core/io.hpp>
 #include <core/std_types.hpp>
 #include <core/services.hpp>
 #include <core/os.hpp>
+#include <engine/gfx/screen_rect.hpp>
 
 namespace stdfs = std::filesystem;
 
@@ -46,7 +48,7 @@ public:
 	std::vector<stdfs::path> locateData(std::vector<DataSearch> const& searchPatterns);
 
 	bool init(Info const& info = {});
-	void update();
+	gfx::ScreenRect tick(Time dt);
 };
 
 stdfs::path exePath();

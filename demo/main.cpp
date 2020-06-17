@@ -12,7 +12,6 @@
 #include <engine/levk.hpp>
 #include <engine/assets/resources.hpp>
 #include <engine/ecs/registry.hpp>
-#include <engine/editor/editor.hpp>
 #include <engine/gfx/camera.hpp>
 #include <engine/gfx/font.hpp>
 #include <engine/gfx/geometry.hpp>
@@ -126,9 +125,7 @@ int main(int argc, char** argv)
 	info0.config.size = {1280, 720};
 	info0.config.title = "LittleEngineVk Demo";
 	info0.config.centreOffset = {-200, -200};
-	info0.config.bEnableGUI = true;
 	auto info1 = info0;
-	info1.config.bEnableGUI = false;
 	info1.options.colourSpaces.push_back({ColourSpace::eRGBLinear});
 	// info1.config.mode = Window::Mode::eBorderlessFullscreen;
 	info1.config.title += " 2";
@@ -139,13 +136,12 @@ int main(int argc, char** argv)
 	bool bDisableCam = false;
 	bool bTEMP = false;
 	bool bToggleModel0 = false;
-	bool bEditor = false;
 	bool bAltPressed = false;
 	gfx::Model::Info m0info;
 	gfx::Model::Info m1info;
 	Time reloadTime;
-	auto onInput = [&mainWindow, &w1, eid0, &registry, &bWF0, &bTEMP, &bToggleModel0, &bEditor, &bRecreate0, &bRecreate1, &bClose0,
-					&bClose1, &bDisableCam, &bAltPressed](Key key, Action action, Mods mods) {
+	auto onInput = [&mainWindow, &w1, eid0, &registry, &bWF0, &bTEMP, &bToggleModel0, &bRecreate0, &bRecreate1, &bClose0, &bClose1,
+					&bDisableCam, &bAltPressed](Key key, Action action, Mods mods) {
 		if (key == Key::eW && action == Action::eRelease && mods & Mods::eCONTROL)
 		{
 			bClose0 = mainWindow.isFocused();
@@ -189,10 +185,6 @@ int main(int argc, char** argv)
 		if (key == Key::eM && action == Action::eRelease && (mods & Mods::eCONTROL))
 		{
 			bToggleModel0 = true;
-		}
-		if (key == Key::eF3 && action == Action::eRelease)
-		{
-			bEditor = !bEditor;
 		}
 		if (key == Key::eD && action == Action::eRelease && (mods & Mods::eCONTROL))
 		{
@@ -317,23 +309,9 @@ int main(int argc, char** argv)
 				}
 
 				// Tick
-				engine.update();
+				gameRect = engine.tick(dt);
 				registry.sweep();
-				gameRect = {};
 
-#if defined(LEVK_EDITOR)
-				static auto const smol = glm::vec2(0.66f);
-				if (bEditor && mainWindow.isOpen())
-				{
-					static glm::vec2 centre = glm::vec2(0.5f * (f32)mainWindow.windowSize().x, 0.0f);
-					if (bAltPressed)
-					{
-						centre = mainWindow.cursorPos();
-					}
-					gameRect = mainWindow.renderer().clampToView(centre, smol);
-					editor::render(gameRect, mainWindow.framebufferSize());
-				}
-#endif
 				if (bToggleModel0)
 				{
 					if (pModel0 && pModel1)
@@ -390,7 +368,7 @@ int main(int argc, char** argv)
 				}
 
 #if defined(LEVK_EDITOR)
-				if (editor::g_bTickGame)
+				// if (editor::g_bTickGame)
 #endif
 				{
 					// Update matrices
@@ -434,14 +412,6 @@ int main(int argc, char** argv)
 					}
 				}
 			}
-#if defined(LEVK_USE_IMGUI)
-			// GUI
-			static bool s_bImGuiDemo = false;
-			if (s_bImGuiDemo)
-			{
-				GUI(ImGui::ShowDemoWindow(&s_bImGuiDemo));
-			}
-#endif
 			ft = Time::elapsed() - fStart;
 
 			// Render

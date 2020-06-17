@@ -1,14 +1,18 @@
+#include "engine/gfx/renderer.hpp"
+#include "engine/window/input_types.hpp"
 #include <deque>
 #include <mutex>
 #include <core/log_config.hpp>
 #include <core/log.hpp>
 #include <core/utils.hpp>
-#include <engine/editor/editor.hpp>
+#include <editor/editor.hpp>
 #if defined(LEVK_EDITOR)
 #if defined(LEVK_USE_IMGUI)
 #include <imgui.h>
 #endif
 #include <gfx/ext_gui.hpp>
+#include <engine/window/window.hpp>
+#include <window/window_impl.hpp>
 
 namespace le
 {
@@ -22,6 +26,15 @@ namespace
 bool g_bInit = false;
 log::OnLog g_onLogChain = nullptr;
 std::mutex g_logMutex;
+
+struct
+{
+	WindowID window;
+	OnInput::Token inputToken;
+	OnFocus::Token focusToken;
+	bool enabled = false;
+	bool bAltPressed = false;
+} g_data;
 
 struct LogEntry final
 {
@@ -231,12 +244,29 @@ void drawLog(glm::ivec2 const& fbSize, s32 logHeight)
 }
 } // namespace
 
-bool editor::init()
+bool editor::init(WindowID editorWindow)
 {
 	if (!g_bInit && gfx::ext_gui::isInit())
 	{
 		g_onLogChain = log::g_onLog;
 		log::g_onLog = &guiLog;
+		g_data.window = editorWindow;
+		g_data.inputToken = Window::registerInput(
+			[](Key key, Action action, Mods mods) {
+				if (key == Key::eE && action == Action::eRelease && mods & Mods::eCONTROL)
+				{
+					g_data.enabled = !g_data.enabled;
+				}
+				if ((key == Key::eLeftAlt || key == Key::eRightAlt) && (action == Action::ePress || action == Action::eRelease))
+				{
+					g_data.bAltPressed = action == Action::ePress;
+				}
+			},
+			editorWindow);
+		if (auto pWindow = WindowImpl::windowImpl(g_data.window))
+		{
+			g_data.focusToken = pWindow->m_pWindow->registerFocus([](bool) { g_data.bAltPressed = false; });
+		}
 		return g_bInit = true;
 	}
 	return false;
@@ -249,23 +279,36 @@ void editor::deinit()
 		log::g_onLog = g_onLogChain;
 		g_onLogChain = nullptr;
 		g_bInit = false;
+		g_data = {};
 	}
 	return;
 }
 
-bool editor::render(gfx::ScreenRect const& scene, glm::ivec2 const& fbSize)
+gfx::ScreenRect editor::tick([[maybe_unused]] Time dt)
 {
-	if (gfx::ext_gui::isInit() && fbSize.x > 0 && fbSize.y > 0)
+	static auto const smol = glm::vec2(0.66f);
+	auto pWindow = WindowImpl::windowImpl(g_data.window);
+	if (g_data.enabled && pWindow && pWindow->isOpen())
 	{
-		auto const logHeight = fbSize.y - (s32)(scene.bottom * (f32)fbSize.y);
-		glm::ivec2 const leftPanelSize = {(s32)(scene.left * (f32)fbSize.x), fbSize.y - logHeight};
-		glm::ivec2 const rightPanelSize = {fbSize.x - (s32)(scene.right * (f32)fbSize.x), fbSize.y - logHeight};
-		drawLog(fbSize, logHeight);
-		drawLeftPanel(fbSize, leftPanelSize);
-		drawRightPanel(fbSize, rightPanelSize);
-		return true;
+		static glm::vec2 centre = glm::vec2(0.5f * (f32)pWindow->windowSize().x, 0.0f);
+		auto const fbSize = pWindow->framebufferSize();
+		if (g_data.bAltPressed)
+		{
+			centre = pWindow->cursorPos();
+		}
+		auto const scene = pWindow->m_pWindow->renderer().clampToView(centre, smol);
+		if (gfx::ext_gui::isInit() && fbSize.x > 0 && fbSize.y > 0)
+		{
+			auto const logHeight = fbSize.y - (s32)(scene.bottom * (f32)fbSize.y);
+			glm::ivec2 const leftPanelSize = {(s32)(scene.left * (f32)fbSize.x), fbSize.y - logHeight};
+			glm::ivec2 const rightPanelSize = {fbSize.x - (s32)(scene.right * (f32)fbSize.x), fbSize.y - logHeight};
+			drawLog(fbSize, logHeight);
+			drawLeftPanel(fbSize, leftPanelSize);
+			drawRightPanel(fbSize, rightPanelSize);
+			return scene;
+		}
 	}
-	return false;
+	return {};
 }
 } // namespace le
 #endif

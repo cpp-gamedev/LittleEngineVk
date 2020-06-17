@@ -6,7 +6,6 @@
 #include <core/transform.hpp>
 #include <core/utils.hpp>
 #include <engine/assets/resources.hpp>
-#include <engine/editor/editor.hpp>
 #include <engine/gfx/mesh.hpp>
 #include <gfx/device.hpp>
 #include <gfx/ext_gui.hpp>
@@ -14,6 +13,7 @@
 #include <gfx/render_cmd.hpp>
 #include <gfx/renderer_impl.hpp>
 #include <gfx/resource_descriptors.hpp>
+#include <editor/editor.hpp>
 #include <window/window_impl.hpp>
 
 namespace le::gfx
@@ -47,30 +47,6 @@ u32 TexSet::total() const
 }
 } // namespace
 
-ScreenRect::ScreenRect(glm::vec4 const& ltrb) noexcept : left(ltrb.x), top(ltrb.y), right(ltrb.z), bottom(ltrb.w) {}
-
-ScreenRect ScreenRect::sizeTL(glm::vec2 const& size, glm::vec2 const& leftTop)
-{
-	return ScreenRect({leftTop.x, leftTop.y, leftTop.x + size.x, leftTop.y + size.y});
-}
-
-ScreenRect ScreenRect::sizeCentre(glm::vec2 const& size, glm::vec2 const& centre)
-{
-	auto const leftTop = centre - (glm::vec2(0.5f) * size);
-	return ScreenRect({leftTop.x, leftTop.y, leftTop.x + size.x, leftTop.y + size.y});
-}
-
-glm::vec2 ScreenRect::size() const
-{
-	return glm::vec2(right - left, bottom - top);
-}
-
-f32 ScreenRect::aspect() const
-{
-	glm::vec2 const s = size();
-	return s.x / s.y;
-}
-
 Renderer::Renderer() = default;
 Renderer::Renderer(Renderer&&) = default;
 Renderer& Renderer::operator=(Renderer&&) = default;
@@ -93,11 +69,11 @@ void Renderer::submit(Scene scene)
 	return;
 }
 
-void Renderer::render()
+void Renderer::render(bool bEditor)
 {
 	if (m_uImpl)
 	{
-		m_uImpl->render(std::move(m_scene));
+		m_uImpl->render(std::move(m_scene), bEditor);
 	}
 }
 
@@ -121,34 +97,10 @@ RendererImpl::RendererImpl(Info const& info, Renderer* pOwner) : m_context(info.
 	pipelineInfo.name = "skybox";
 	pipelineInfo.flags.reset(Pipeline::Flag::eDepthWrite);
 	m_pipes.pSkybox = createPipeline(std::move(pipelineInfo));
-	m_bExtGUI = info.bExtGUI;
-	if (m_bExtGUI)
-	{
-		if (!initExtGUI())
-		{
-			LOG_E("[{}] Failed to initialise GUI!", m_name);
-			m_bExtGUI = false;
-		}
-#if defined(LEVK_EDITOR)
-		else
-		{
-			editor::init();
-		}
-#endif
-	}
 }
 
 RendererImpl::~RendererImpl()
 {
-	if (m_bExtGUI)
-	{
-		deferred::release([]() {
-#if defined(LEVK_EDITOR)
-			editor::deinit();
-#endif
-			ext_gui::deinit();
-		});
-	}
 	m_pipelines.clear();
 	destroy();
 }
@@ -222,10 +174,6 @@ void RendererImpl::update()
 		pipeline.m_uImpl->pollShaders();
 	}
 #endif
-	if (m_bExtGUI)
-	{
-		gfx::ext_gui::newFrame();
-	}
 }
 
 Pipeline* RendererImpl::createPipeline(Pipeline::Info info)
@@ -254,14 +202,14 @@ Pipeline* RendererImpl::createPipeline(Pipeline::Info info)
 	return &m_pipelines.back();
 }
 
-bool RendererImpl::render(Renderer::Scene scene)
+bool RendererImpl::render(Renderer::Scene scene, bool bExtGUI)
 {
 	if (scene.batches.empty()
 		|| std::all_of(scene.batches.begin(), scene.batches.end(), [](auto const& batch) -> bool { return batch.drawables.empty(); }))
 	{
 		return false;
 	}
-	if (m_bExtGUI)
+	if (bExtGUI)
 	{
 		ext_gui::render();
 	}
@@ -277,7 +225,7 @@ bool RendererImpl::render(Renderer::Scene scene)
 	{
 		g_device.destroy(frame.framebuffer);
 		frame.framebuffer = g_device.createFramebuffer(m_renderPass, target.attachments(), target.extent);
-		u64 const tris = doRenderPass(scene, push, target);
+		u64 const tris = doRenderPass(scene, push, target, bExtGUI);
 		result = submit();
 		bRecreate = result == RenderContext::Outcome::eSwapchainRecreated;
 		if (result == RenderContext::Outcome::eSuccess)
@@ -510,7 +458,7 @@ RendererImpl::PCDeq RendererImpl::writeSets(Renderer::Scene& out_scene)
 	return push;
 }
 
-u64 RendererImpl::doRenderPass(Renderer::Scene const& scene, PCDeq const& push, RenderTarget const& target) const
+u64 RendererImpl::doRenderPass(Renderer::Scene const& scene, PCDeq const& push, RenderTarget const& target, bool bExtGUI) const
 {
 	auto const& frame = frameSync();
 	auto const c = scene.clear.colour;
@@ -557,7 +505,7 @@ u64 RendererImpl::doRenderPass(Renderer::Scene const& scene, PCDeq const& push, 
 		drawableIdx = 0;
 		++batchIdx;
 	}
-	if (m_bExtGUI)
+	if (bExtGUI)
 	{
 		ext_gui::renderDrawData(frame.commandBuffer);
 	}

@@ -1,5 +1,6 @@
 #include <core/jobs.hpp>
 #include <core/log.hpp>
+#include <core/os.hpp>
 #include <core/time.hpp>
 #include <core/utils.hpp>
 #include <engine/levk.hpp>
@@ -8,9 +9,9 @@
 #include <gfx/device.hpp>
 #include <gfx/ext_gui.hpp>
 #include <gfx/vram.hpp>
-#include <levk_impl.hpp>
 #include <window/window_impl.hpp>
-#include <core/os.hpp>
+#include <editor/editor.hpp>
+#include <levk_impl.hpp>
 
 namespace le::engine
 {
@@ -94,11 +95,16 @@ bool Service::init(Info const& info)
 	return true;
 }
 
-void Service::update()
+gfx::ScreenRect Service::tick([[maybe_unused]] Time dt)
 {
+	gfx::ScreenRect ret;
 	gfx::vram::update();
 	gfx::deferred::update();
 	Resources::inst().update();
 	WindowImpl::update();
+#if defined(LEVK_EDITOR)
+	ret = editor::tick(dt);
+#endif
+	return ret;
 }
 } // namespace le::engine
